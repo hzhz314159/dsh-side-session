@@ -1,54 +1,35 @@
-# dsh-side-session
+# dsh-side-session — DSH 临时会话
 
-DSH（DeepSeek Harness）侧边临时会话插件 —— 复刻 Codex 的「side session」：
-基于**当前会话上下文 + agent 触及的文件**，在右侧面板（可撕出浮窗）里发起
-**不污染主会话**的临时追问。
+DSH（DeepSeek Harness）**临时会话**插件：基于**当前主对话上下文 + agent 触及的文件**，
+在**独立悬浮窗**里发起**不污染主会话**的临时追问。
 
-## 功能（v0.2.0）
+## 功能（v0.2.2）
 
-- **右缘停靠、向右侧展开**：面板钉在页面最右缘；展开时把主界面向右推开
-  （压缩主布局根 frame，AppFrame 自动重排三列），**绝不遮挡聊天内容**。
-- **拖出悬浮窗**：按住面板头部拖离右缘即撕出为独立浮窗（跟随鼠标），浮窗可
-  拖拽移动、右下角缩放，双击头部或点按钮收回侧栏；也可用「⧉ 撕出」按钮切换。
-- **主界面同款 UI**：同一套 `--dsw-alias-*` / `--dsw-specific-*` 设计令牌；
-  用户消息复刻官方气泡（`--dsw-specific-bubble`、radius 22px），助手消息复刻
-  官方整宽 markdown 排版（`--dsw-font-markdown-base`、代码块/行内代码令牌），
-  输入框复刻官方 Composer 卡片（`--dsw-specific-input-major`、radius 22px、
-  聚焦描边），按钮为官方图标按钮风格；深色/浅色主题自动跟随。
-- 自动捕获当前会话的整段对话记录 + 本会话所有被写/改/删/读的文件（解析会话日志 `session.jsonl.zstd`）。
-- 全局单例 Store，切载体不丢消息；浮窗状态仅内存，重载强制回右侧面板。
-- 会话头部 💬 按钮（左侧主栏 footer 图标）直接唤起；`/side-session` 斜杠命令；
-  全局快捷键 **Ctrl+Shift+S** 唤起浮窗。
-- 三种回答引擎（互斥、持久化、即时切换）：
-  1. **复用 dsh 全局 Key**（默认）：服务端读 `env DEEPSEEK_API_KEY` → `$DSH_HOME/.credentials.yaml`，base 用 `env DEEPSEEK_API_BASE`（默认 `https://api.deepseek.com`），模型读 `$DSH_HOME/settings.yaml`。
-  2. **插件自带 Key**：在设置里填写 apiKey / model / endpoint（secret，持久化）。
-  3. **走 dsh 宿主 LLM**：客户端不碰任何 key，同源调用 dsh 主机暴露的 `POST /v1/chat/completions`；未就绪提示「DSH LLM服务未启动，请切换其他模式」。
-- 流式输出（markdown 渲染 + 闪烁光标），三种模式 UI 一致。
+- **独立悬浮窗**（无侧栏停靠形态）：`position:fixed` 可拖拽移动、右下角缩放手柄；
+  启动不自动弹出，由左下角 💬 图标 / `Ctrl+Shift+S` / `/side-session` 斜杠命令唤起。
+- **自动导入主对话上下文**：打开即自动加载当前会话的对话记录 + 触及文件
+  （解析 `session.jsonl.zstd` 日志，实测准确）；主对话变化时**事件驱动缓存失效** + 2s 轮询刷新。
+- **上下文长度三档**（设置 → 临时会话 → 上下文长度，即时生效）：
+  - 1 标准：120 条 / 40K 字符；24 文件 / 单文件 24KB / 合计 200KB
+  - 2 加长（默认）：600 条 / 200K；80 文件 / 64KB / 800KB
+  - 3 完整：5000 条 / 2M；300 文件 / 256KB / 4MB（最接近通读全文）
+- **流式回答 + Stop 按钮**：回答可中止（AbortController）；浮窗隐藏时暂停轮询（省资源）。
+- **三种回答引擎**（互斥、持久化、即时切换）：
+  1. 复用 dsh 全局 Key（默认）——读 `DEEPSEEK_API_KEY` 环境变量 / `$DSH_HOME/.credentials.yaml`
+  2. 插件自带 Key（apiKey / model / endpoint，secret 持久化）
+  3. 走 dsh 宿主 LLM（`ctx.llm.stream`，不读任何 key；失败时错误透传到 UI）
+- 主界面同款 UI（`--dsw-alias-*` 设计令牌，深浅主题自动跟随）；输入框复刻官方 Composer。
 
 ## 设置
 
-「设置 → 侧边临时会话」：
-- 回答引擎模式（1/2/3）+ mode2 的 API Key / model / endpoint；
-- **停靠面板宽度**（280–640px，默认 380），重启后记住。
+「设置 → 临时会话」：回答引擎模式（1/2/3）+ mode2 的 API Key/model/endpoint + **上下文长度**（三档）。
 
 ## 安装 / 加载
 
-两种方式（任选其一）：
-
-### A. 作为 companion 插件随客户端分发
-
-把本目录整体放入 DSH Desktop 仓库的 `dsh-desktop/assets/plugins/dsh-side-session/`，
-客户端启动时 `sync-companion-plugins.js` 会把它同步进 web profile 并据 `cordis.patch.yml` 挂载。
-
-### B. 独立插件（插件市场 / 手动）
-
-```
+```bash
 dsh plugin --profile <name> add <本仓库 git 地址>#<分支>
-# 或把本目录复制到 ~/.dsh/profiles/<name>/node_modules/dsh-side-session/ 并手动在
-# cordis.patch.yml 加一条 - insert: { id: side-session, name: 'dsh-side-session', config: {} }
+# 或复制到 ~/.dsh/profiles/<name>/node_modules/@dsh-external/dsh-side-session/ 并重启
 ```
-
-加载后重启 `dsh web` 即可。
 
 ## 文件结构
 
@@ -56,21 +37,22 @@ dsh plugin --profile <name> add <本仓库 git 地址>#<分支>
 package.json        # 含 dsh.client.inject / platform 声明
 dsh.plugin.json      # 插件描述
 cordis.patch.yml     # 服务端加载（insert 块）
-lib/index.js         # 服务端：设置节 + /context + /ask 流式代理 + 会话日志解析
-lib/client.js        # 浏览器 bundle：Store + 右缘面板/浮窗 + 拖出/缩放 + 三模式 + 流式 UI（零构建）
+lib/index.js         # 服务端：设置节 + /context + /ask 流式代理 + 日志解析 + 事件缓存失效
+lib/client.js        # 浏览器 bundle：Store + 悬浮窗 + 拖拽/缩放 + 三模式 + 流式 UI（零构建）
 ```
 
-## 已知限制 / 待确认
+## 安全与限制
 
-- **「浮窗」为页内可拖拽自由浮层**（position:fixed），非独立 OS 窗口；如需真·独立窗口需宿主额外桥（`dsh-float-window` 的 Electron 桥）。
-- 停靠挤压依赖官方 AppFrame 的 ResizeObserver 重排（根 frame 选择器 `[data-shell-overlay]` 的父级）；若官方布局大改，面板自动退化为普通右侧浮层（不遮挡逻辑失效，其余功能不变）。
-- mode3 依赖 dsh 主机 `/v1/chat/completions` 端点；不可用时按 Spec 提示切换模式，可用 mode1/mode2 兜底。
-- 读取类文件仅 best-effort（取 `tool/call` 的 `path` 字段）。
-- 上下文有截断上限（transcript ~120 条/40K 字符；单文件 24KB；文件 200 个），防止 prompt 膨胀。
+- 路由仅限回环（`isLoopback`）；API Key 走 settings secret role。
+- 大文件注入前先 `stat`，二进制跳过、超大文件只读前 N KB（防 OOM）。
+- 「浮窗」为页内可拖拽自由浮层（position:fixed），非独立 OS 窗口。
+- 上下文数据源为会话日志解析（`session.jsonl.zstd` 属平台实现细节，升级后若格式变化需适配）。
 
 ## 变更记录
 
-- **0.2.0**（2026-08-17）：右缘停靠 + 主界面向右推开；头部拖出浮窗（跟随鼠标）/
-  浮窗缩放/双击收回；UI 全面对齐主界面（官方令牌 + 官方气泡/Composer/markdown
-  排版）；新增面板宽度设置。
+- **0.2.2**（2026-08-16）：上下文长度三档（标准/加长/完整）；删除侧栏停靠死代码与
+  无效的面板宽度设置；默认不自动弹出；事件驱动缓存失效替代无效的实时订阅猜测；
+  mode3 错误透传；文件读取 stat + 二进制跳过；缓存 LRU 上限；Stop 按钮；
+  context 响应补充 provider/model。
+- **0.2.0**（2026-08-15）：独立浮窗形态（此前为右缘停靠，已按用户要求移除侧栏样式）。
 - **0.1.0**：初版（右侧自绘固定面板 + 撕出浮窗按钮 + 三模式引擎）。
